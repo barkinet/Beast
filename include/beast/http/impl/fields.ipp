@@ -889,7 +889,10 @@ prepare_payload_impl(bool chunked,
         }
         else
         {
-            std::string s;
+            std::basic_string<
+                char,
+                std::char_traits<char>,
+                Allocator> s{alloc_};
             s.reserve(it->value().size() + 9);
             s.append(it->value().data(), it->value().size());
             s.append(", chunked", 9);
@@ -897,45 +900,39 @@ prepare_payload_impl(bool chunked,
         }
         return;
     }
-    auto const clear_chunked =
-        [this]()
-        {
-            auto it = find(field::transfer_encoding);
-            if(it == end())
-                return;
 
-            // We have to just try it because we can't
-            // know ahead of time if there's enough room.
-            try
-            {
-                static_string<max_static_buffer> temp;
-                detail::without_chunked_last(temp, it->value());
-                if(! temp.empty())
-                    set(field::transfer_encoding, temp);
-                else
-                    erase(field::transfer_encoding);
-            }
-            catch(std::length_error const&)
-            {
-                std::string s;
-                s.reserve(it->value().size());
-                detail::without_chunked_last(s, it->value());
-                if(! s.empty())
-                    set(field::transfer_encoding, s);
-                else
-                    erase(field::transfer_encoding);
-            }
-        };
+    auto it = find(field::transfer_encoding);
+    if(it != end())
+    {
+        // We have to just try it because we can't
+        // know ahead of time if there's enough room.
+        try
+        {
+            static_string<max_static_buffer> temp;
+            detail::without_chunked_last(temp, it->value());
+            if(! temp.empty())
+                set(field::transfer_encoding, temp);
+            else
+                erase(field::transfer_encoding);
+        }
+        catch(std::length_error const&)
+        {
+            std::basic_string<
+                char,
+                std::char_traits<char>,
+                Allocator> s{alloc_};
+            s.reserve(it->value().size());
+            detail::without_chunked_last(s, it->value());
+            if(! s.empty())
+                set(field::transfer_encoding, s);
+            else
+                erase(field::transfer_encoding);
+        }
+    }
     if(size)
-    {
-        clear_chunked();
         set(field::content_length, *size);
-    }
     else
-    {
-        clear_chunked();
         erase(field::content_length);
-    }
 }
 
 //------------------------------------------------------------------------------
