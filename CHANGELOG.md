@@ -10,6 +10,7 @@ HTTP:
 * Add vector_body
 * span, string, vector bodies are public
 * fields temp string uses allocator
+* Fix spurious uninitialized warning
 
 --------------------------------------------------------------------------------
 
