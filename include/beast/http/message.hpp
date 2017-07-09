@@ -642,6 +642,34 @@ struct message : header<isRequest, Fields>
         return *this;
     }
 
+    /** Returns `true` if the message semantics indicate keep-alive
+
+        The value depends on the version in the message, which must
+        be set to the final value before this function is called or
+        else the return value is unreliable.
+    */
+    bool
+    keep_alive() const
+    {
+        return this->get_keep_alive_impl(this->version);
+    }
+
+    /** Set the keep-alive message semantic option
+
+        This function adjusts the Connection field to indicate
+        whether or not the connection should be kept open after
+        the corresponding response. The result depends on the
+        version set on the message, which must be set to the
+        final value before making this call.
+
+        @param value `true` if the connection should persist.
+    */
+    void
+    keep_alive(bool value)
+    {
+        this->set_keep_alive_impl(this->version, value);
+    }
+
     /** Returns the payload size of the body in octets if possible.
 
         This function invokes the @b Body algorithm to measure

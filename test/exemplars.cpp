@@ -190,41 +190,57 @@ public:
     struct reader;
 
 protected:
-    /** Set or clear the method string.
-
-        @note Only called for requests.
-    */
-    void set_method_impl(string_view s);
-
-    /** Set or clear the target string.
-
-        @note Only called for requests.
-    */
-    void set_target_impl(string_view s);
-
-    /** Set or clear the reason string.
-
-        @note Only called for responses.
-    */
-    void set_reason_impl(string_view s);
-
     /** Returns the request-method string.
 
         @note Only called for requests.
     */
-    string_view get_method_impl() const;
+    string_view
+    get_method_impl() const;
 
     /** Returns the request-target string.
 
         @note Only called for requests.
     */
-    string_view get_target_impl() const;
+    string_view
+    get_target_impl() const;
 
     /** Returns the response reason-phrase string.
 
         @note Only called for responses.
     */
-    string_view get_reason_impl() const;
+    string_view
+    get_reason_impl() const;
+
+    /** Returns the keep-alive setting
+    */
+    bool
+    get_keep_alive_impl(unsigned version) const;
+
+    /** Set or clear the method string.
+
+        @note Only called for requests.
+    */
+    void
+    set_method_impl(string_view s);
+
+    /** Set or clear the target string.
+
+        @note Only called for requests.
+    */
+    void
+    set_target_impl(string_view s);
+
+    /** Set or clear the reason string.
+
+        @note Only called for responses.
+    */
+    void
+    set_reason_impl(string_view s);
+
+    /** Adjusts the Connection field
+    */
+    void
+    set_keep_alive_impl(unsigned verison, bool keep_alive);
 
     /** Updates the payload metadata.
 
@@ -232,10 +248,12 @@ protected:
 
         @param n The content length if known, otherwise `boost::none`
     */
-    void prepare_payload_impl(bool b, boost::optional<std::uint64_t> n);
+    void
+    prepare_payload_impl(bool b, boost::optional<std::uint64_t> n);
 };
 
-static_assert(is_fields<Fields>::value, "");
+static_assert(is_fields<Fields>::value,
+    "Fields requirements not met");
 
 //]
 

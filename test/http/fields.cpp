@@ -584,7 +584,173 @@ public:
         }
     }
 
-    void run() override
+    void
+    testKeepAlive()
+    {
+        response<empty_body> res;
+        auto const keep_alive =
+            [&](bool v)
+            {
+                res.keep_alive(v);
+                BEAST_EXPECT(
+                    (res.keep_alive() && v) ||
+                    (! res.keep_alive() && ! v));
+            };
+
+        BOOST_STATIC_ASSERT(fields::max_static_buffer == 4096);
+        std::string const big(4096 + 1, 'a');
+
+        // HTTP/1.0
+        res.version = 10;
+        res.erase(field::connection);
+
+        keep_alive(false);
+        BEAST_EXPECT(res.count(field::connection) == 0);
+
+        res.set(field::connection, "close");
+        keep_alive(false);
+        BEAST_EXPECT(res.count(field::connection) == 0);
+
+        res.set(field::connection, "keep-alive");
+        keep_alive(false);
+        BEAST_EXPECT(res.count(field::connection) == 0);
+
+        res.set(field::connection, "keep-alive, close");
+        keep_alive(false);
+        BEAST_EXPECT(res.count(field::connection) == 0);
+
+        res.erase(field::connection);
+        keep_alive(true);
+        BEAST_EXPECT(res[field::connection] == "keep-alive");
+
+        res.set(field::connection, "close");
+        keep_alive(true);
+        BEAST_EXPECT(res[field::connection] == "keep-alive");
+
+        res.set(field::connection, "keep-alive");
+        keep_alive(true);
+        BEAST_EXPECT(res[field::connection] == "keep-alive");
+
+        res.set(field::connection, "keep-alive, close");
+        keep_alive(true);
+        BEAST_EXPECT(res[field::connection] == "keep-alive");
+
+        auto const test10 =
+            [&](std::string s)
+        {
+            res.set(field::connection, s);
+            keep_alive(false);
+            BEAST_EXPECT(res[field::connection] == s);
+
+            res.set(field::connection, s + ", close");
+            keep_alive(false);
+            BEAST_EXPECT(res[field::connection] == s);
+
+            res.set(field::connection, "keep-alive, " + s);
+            keep_alive(false);
+            BEAST_EXPECT(res[field::connection] == s);
+
+            res.set(field::connection, "keep-alive, " + s + ", close");
+            keep_alive(false);
+            BEAST_EXPECT(res[field::connection] == s);
+
+            res.set(field::connection, s);
+            keep_alive(true);
+            BEAST_EXPECT(res[field::connection] == s + ", keep-alive");
+
+            res.set(field::connection, s + ", close");
+            keep_alive(true);
+            BEAST_EXPECT(res[field::connection] == s + ", keep-alive");
+
+            res.set(field::connection, "keep-alive, " + s);
+            keep_alive(true);
+            BEAST_EXPECT(res[field::connection] == "keep-alive, " + s);
+
+            res.set(field::connection, "keep-alive, " + s+ ", close");
+            keep_alive(true);
+            BEAST_EXPECT(res[field::connection] == "keep-alive, " + s);
+        };
+
+        test10("foo");
+        test10(big);
+
+        // HTTP/1.1
+        res.version = 11;
+
+        res.erase(field::connection);
+        keep_alive(true);
+        BEAST_EXPECT(res.count(field::connection) == 0);
+
+        res.set(field::connection, "close");
+        keep_alive(true);
+        BEAST_EXPECT(res.count(field::connection) == 0);
+
+        res.set(field::connection, "keep-alive");
+        keep_alive(true);
+        BEAST_EXPECT(res.count(field::connection) == 0);
+
+        res.set(field::connection, "keep-alive, close");
+        keep_alive(true);
+        BEAST_EXPECT(res.count(field::connection) == 0);
+
+        res.erase(field::connection);
+        keep_alive(false);
+        BEAST_EXPECT(res[field::connection] == "close");
+
+        res.set(field::connection, "close");
+        keep_alive(false);
+        BEAST_EXPECT(res[field::connection] == "close");
+
+        res.set(field::connection, "keep-alive");
+        keep_alive(false);
+        BEAST_EXPECT(res[field::connection] == "close");
+
+        res.set(field::connection, "keep-alive, close");
+        keep_alive(false);
+        BEAST_EXPECT(res[field::connection] == "close");
+
+        auto const test11 =
+            [&](std::string s)
+        {
+            res.set(field::connection, s);
+            keep_alive(true);
+            BEAST_EXPECT(res[field::connection] == s);
+
+            res.set(field::connection, s + ", close");
+            keep_alive(true);
+            BEAST_EXPECT(res[field::connection] == s);
+
+            res.set(field::connection, "keep-alive, " + s);
+            keep_alive(true);
+            BEAST_EXPECT(res[field::connection] == s);
+
+            res.set(field::connection, "keep-alive, " + s + ", close");
+            keep_alive(true);
+            BEAST_EXPECT(res[field::connection] == s);
+
+            res.set(field::connection, s);
+            keep_alive(false);
+            BEAST_EXPECT(res[field::connection] == s + ", close");
+
+            res.set(field::connection, "close, " + s);
+            keep_alive(false);
+            BEAST_EXPECT(res[field::connection] == "close, " + s);
+
+            res.set(field::connection, "keep-alive, " + s);
+            keep_alive(false);
+            BEAST_EXPECT(res[field::connection] == s + ", close");
+
+            res.set(field::connection, "close, " + s + ", keep-alive");
+            keep_alive(false);
+            BEAST_EXPECT(res[field::connection] == "close, " + s);
+        };
+
+        test11("foo");
+        test11(big);
+    }
+
+    void
+    run() override
     {
         testMembers();
         testHeaders();
@@ -592,6 +758,8 @@ public:
         testErase();
         testContainer();
         testPreparePayload();
+
+        testKeepAlive();
     }
 };
 

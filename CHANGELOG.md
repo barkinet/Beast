@@ -12,6 +12,15 @@ HTTP:
 * fields temp string uses allocator
 * Fix spurious uninitialized warning
 
+API Changes:
+
+* Add message::keep_alive()
+
+Actions Required:
+
+* Change user defined implementations of Fields and
+  FieldsReader to meet the new requirements.
+
 --------------------------------------------------------------------------------
 
 Version 76:

@@ -136,14 +136,10 @@ public:
     bool
     get_chunked() const;
 
-    bool
-    get_keep_alive(int version) const;
-
     basic_fields const& f_;
     boost::asio::const_buffer cb_[3];
     char buf_[13];
     bool chunked_;
-    bool keep_alive_;
 
 public:
     using const_buffers_type =
@@ -164,12 +160,6 @@ public:
     chunked()
     {
         return chunked_;
-    }
-
-    bool
-    keep_alive()
-    {
-        return keep_alive_;
     }
 
     const_buffers_type
@@ -202,30 +192,11 @@ get_chunked() const
 }
 
 template<class Allocator>
-bool
-basic_fields<Allocator>::reader::
-get_keep_alive(int version) const
-{
-    if(version < 11)
-    {
-        auto const it = f_.find(field::connection);
-        if(it == f_.end())
-            return false;
-        return token_list{it->value()}.exists("keep-alive");
-    }
-    auto const it = f_.find(field::connection);
-    if(it == f_.end())
-        return true;
-    return ! token_list{it->value()}.exists("close");
-}
-
-template<class Allocator>
 basic_fields<Allocator>::reader::
 reader(basic_fields const& f,
         unsigned version, verb v)
     : f_(f)
     , chunked_(get_chunked())
-    , keep_alive_(get_keep_alive(version))
 {
 /*
     request
@@ -265,7 +236,6 @@ reader(basic_fields const& f,
         unsigned version, unsigned code)
     : f_(f)
     , chunked_(get_chunked())
-    , keep_alive_(get_keep_alive(version))
 {
 /*
     response
@@ -761,68 +731,6 @@ equal_range(string_view name) const ->
 
 //------------------------------------------------------------------------------
 
-// Fields
-
-template<class Allocator>
-inline
-void
-basic_fields<Allocator>::
-set_method_impl(string_view s)
-{
-    realloc_string(method_, s);
-}
-
-template<class Allocator>
-inline
-void
-basic_fields<Allocator>::
-set_target_impl(string_view s)
-{
-    realloc_target(
-        target_or_reason_, s);
-}
-
-template<class Allocator>
-inline
-void
-basic_fields<Allocator>::
-set_reason_impl(string_view s)
-{
-    realloc_string(
-        target_or_reason_, s);
-}
-
-template<class Allocator>
-inline
-string_view
-basic_fields<Allocator>::
-get_method_impl() const
-{
-    return method_;
-}
-
-template<class Allocator>
-inline
-string_view
-basic_fields<Allocator>::
-get_target_impl() const
-{
-    if(target_or_reason_.empty())
-        return target_or_reason_;
-    return {
-        target_or_reason_.data() + 1,
-        target_or_reason_.size() - 1};
-}
-
-template<class Allocator>
-inline
-string_view
-basic_fields<Allocator>::
-get_reason_impl() const
-{
-    return target_or_reason_;
-}
-
 namespace detail {
 
 // Builds a new string with "chunked" taken off the end if present
@@ -861,7 +769,216 @@ without_chunked_last(String& s, string_view const& tokens)
     }
 }
 
+// Filter a token list
+//
+template<class String, class Pred>
+void
+filter_token_list(
+    String& s,
+    string_view const& value,
+    Pred&& pred)
+{
+    token_list te{value};
+    auto it = te.begin();
+    auto last = te.end();
+    if(it == last)
+        return;
+    while(pred(*it))
+        if(++it == last)
+            return;
+    s.append(it->data(), it->size());
+    while(++it != last)
+    {
+        if(! pred(*it))
+        {
+            s.append(", ");
+            s.append(it->data(), it->size());
+        }
+    }
+}
+
+template<class String>
+void
+keep_alive_impl(
+    String& s, string_view const& value,
+    unsigned version, bool keep_alive)
+{
+    if(version < 11)
+    {
+        if(keep_alive)
+        {
+            // remove close
+            filter_token_list(s, value,
+                [](string_view s)
+                {
+                    return iequals(s, "close");
+                });
+            // add keep-alive
+            if(s.empty())
+                s.append("keep-alive");
+            else if(! token_list{value}.exists("keep-alive"))
+                s.append(", keep-alive");
+        }
+        else
+        {
+            // remove close and keep-alive
+            filter_token_list(s, value,
+                [](string_view s)
+                {
+                    return
+                        iequals(s, "close") ||
+                        iequals(s, "keep-alive");
+                });
+        }
+    }
+    else
+    {
+        if(keep_alive)
+        {
+            // remove close and keep-alive
+            filter_token_list(s, value,
+                [](string_view s)
+                {
+                    return
+                        iequals(s, "close") ||
+                        iequals(s, "keep-alive");
+                });
+        }
+        else
+        {
+            // remove keep-alive
+            filter_token_list(s, value,
+                [](string_view s)
+                {
+                    return iequals(s, "keep-alive");
+                });
+            // add close
+            if(s.empty())
+                s.append("close");
+            else if(! token_list{value}.exists("close"))
+                s.append(", close");
+        }
+    }
+}
+
 } // detail
+
+//------------------------------------------------------------------------------
+
+// Fields
+
+template<class Allocator>
+inline
+string_view
+basic_fields<Allocator>::
+get_method_impl() const
+{
+    return method_;
+}
+
+template<class Allocator>
+inline
+string_view
+basic_fields<Allocator>::
+get_target_impl() const
+{
+    if(target_or_reason_.empty())
+        return target_or_reason_;
+    return {
+        target_or_reason_.data() + 1,
+        target_or_reason_.size() - 1};
+}
+
+template<class Allocator>
+inline
+string_view
+basic_fields<Allocator>::
+get_reason_impl() const
+{
+    return target_or_reason_;
+}
+
+template<class Allocator>
+bool
+basic_fields<Allocator>::
+get_keep_alive_impl(unsigned version) const
+{
+    auto const it = find(field::connection);
+    if(version < 11)
+    {
+        if(it == end())
+            return false;
+        return token_list{
+            it->value()}.exists("keep-alive");
+    }
+    if(it == end())
+        return true;
+    return ! token_list{
+        it->value()}.exists("close");
+}
+
+template<class Allocator>
+inline
+void
+basic_fields<Allocator>::
+set_method_impl(string_view s)
+{
+    realloc_string(method_, s);
+}
+
+template<class Allocator>
+inline
+void
+basic_fields<Allocator>::
+set_target_impl(string_view s)
+{
+    realloc_target(
+        target_or_reason_, s);
+}
+
+template<class Allocator>
+inline
+void
+basic_fields<Allocator>::
+set_reason_impl(string_view s)
+{
+    realloc_string(
+        target_or_reason_, s);
+}
+
+template<class Allocator>
+void
+basic_fields<Allocator>::
+set_keep_alive_impl(
+    unsigned version, bool keep_alive)
+{
+    // VFALCO What about Proxy-Connection ?
+    auto const value = (*this)[field::connection];
+    try
+    {
+        static_string<max_static_buffer> temp;
+        detail::keep_alive_impl(
+            temp, value, version, keep_alive);
+        if(temp.empty())
+            erase(field::connection);
+        else
+            set(field::connection, temp);
+    }
+    catch(std::length_error const&)
+    {
+        std::basic_string<
+            char,
+            std::char_traits<char>,
+            Allocator> temp{alloc_};
+        temp.reserve(value.size());
+        detail::keep_alive_impl(
+            temp, value, version, keep_alive);
+        if(temp.empty())
+            erase(field::connection);
+        else
+            set(field::connection, temp);
+    }
+}
 
 template<class Allocator>
 void
