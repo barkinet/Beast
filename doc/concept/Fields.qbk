@@ -73,12 +73,28 @@ In this table:
         `set_reason_impl` using a non-empty string.
     ]
 ][
+    [`c.get_chunked_impl()`]
+    [`bool`]
+    [
+        Returns `true` if the
+        [@https://tools.ietf.org/html/rfc7230#section-3.3.1 [*Transfer-Encoding]]
+        field value indicates that the payload is chunk encoded. Both
+        of these conditions must be true:
+        [itemized_list
+        [
+            The Transfer-Encoding field is present in the message.
+        ][
+            The last item the value of the field is "chunked".
+        ]]
+    ]
+][
     [`c.get_keep_alive_impl(v)`]
     [`bool`]
     [
-        Returns `true` if the semantics of the Connection field and
-        version indicate that the connection should remain open after
-        the corresponding response is transmitted or received:
+        Returns `true` if the semantics of the
+        [@https://tools.ietf.org/html/rfc7230#section-6.1 [*Connection]]
+        field and version indicate that the connection should remain
+        open after the corresponding response is transmitted or received:
 
         [itemized_list
         [
@@ -122,11 +138,57 @@ In this table:
         is not supported by the container.
     ]
 ][
-    [`a.set_keep_alive_impl(v, b)`]
+    [`a.set_chunked_impl(b)`]
     []
     [
-        Adjusts the Connection field value depending on the values of `v`
-        and `b`. The field value is treated as
+        Adjusts the
+        [@https://tools.ietf.org/html/rfc7230#section-3.3.1 [*Transfer-Encoding]]
+        field as follows:
+
+        [itemized_list
+        [
+            If `b` is `true`, the "chunked" token is appended
+            to the list of encodings if it does not already appear
+            last in the list.
+            If the Transfer-Encoding field is absent, the field will
+            be inserted to the container with the value "chunked".
+        ][
+            If `b` is `false, the "chunked" token is removed from the
+            list of encodings if it appears last in the list.
+            If the result of the removal leaves the list of encodings
+            empty, the Transfer-Encoding field shall not appear when
+            the associated __FieldsReader__ serializes the fields.
+        ]]
+    ]
+
+][
+    [`a.set_content_length_impl(n)`]
+    []
+    [
+        Adjusts the
+        [@https://tools.ietf.org/html/rfc7230#section-3.3.2 [*Content-Length]]
+        field as follows:
+
+        [itemized_list
+        [
+            If `n` contains a value, the Content-Length field
+            will be set to the text representation of the value.
+            Any previous Content-Length fields are removed from
+            the container.
+        ][
+            If `n` does not contain a value, any present Content-Length
+            fields are removed from the container.
+        ]]
+    ]
+
+][
+    [`a.set_keep_alive_impl(v,b)`]
+    []
+    [
+        Adjusts the
+        [@https://tools.ietf.org/html/rfc7230#section-6.1 [*Connection]]
+        field value depending on the values of `v` and `b`. The field
+        value is treated as
         [@https://tools.ietf.org/html/rfc7230#section-6.1 ['connection-option]]
         (rfc7230).
 
@@ -148,35 +210,8 @@ In this table:
             the value if it is not already present.
         ]]
     ]
-][
-    [`a.prepare_payload_impl(b,n)`]
-    []
-    [
-        Adjusts the Content-Length and Transfer-Encoding fields to
-        account for the payload metadata indicated by `b` and `n` as
-        follows. The Transfer-Encoding field value is treated as
-        [@https://tools.ietf.org/html/rfc7230#section-3.3.1 ['1#transfer-coding]]
-        (rfc7230).
 
-        [itemized_list
-        [
-            If `(b)`, the "chunked" token is apppended
-            to the list of encodings if not already at the end.
-            Any Content-Length fields are be removed.
-        ][
-            If `(! b && n)`, set the
-            Content-Length field to `*n`, replacing any previous
-            Content-Length fields. Remove the "chunked" token from
-            the Transfer-Encoding field if the token is present as
-            the last item.
-        ][
-            If `(! b && ! n)`, remove all Content-Length fields,
-            and remove the "chunked" token from the  Transfer-Encoding
-            field if the token is present as the last item.
-        ]]
-    ]
-]
-]
+]]
 
 [heading Exemplar]
 

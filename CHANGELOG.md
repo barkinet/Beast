@@ -15,6 +15,7 @@ HTTP:
 API Changes:
 
 * Add message::keep_alive()
+* Add message::chunked() and message::content_length()
 
 Actions Required:
 

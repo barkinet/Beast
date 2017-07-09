@@ -588,6 +588,11 @@ protected:
     string_view
     get_reason_impl() const;
 
+    /** Returns the chunked Transfer-Encoding setting
+    */
+    bool
+    get_chunked_impl() const;
+
     /** Returns the keep-alive setting
     */
     bool
@@ -614,17 +619,22 @@ protected:
     void
     set_reason_impl(string_view s);
 
+    /** Adjusts the chunked Transfer-Encoding value
+    */
+    void
+    set_chunked_impl(bool value);
+
+    /** Sets or clears the Content-Length field
+    */
+    void
+    set_content_length_impl(
+        boost::optional<std::uint64_t> const& value);
+
     /** Adjusts the Connection field
     */
     void
     set_keep_alive_impl(
         unsigned version, bool keep_alive);
-
-    /** Adjusts the payload related fields
-    */
-    void
-    prepare_payload_impl(bool chunked,
-        boost::optional<std::uint64_t> size);
 
 private:
     template<class OtherAlloc>

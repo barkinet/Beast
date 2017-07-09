@@ -750,6 +750,156 @@ public:
     }
 
     void
+    testContentLength()
+    {
+        response<empty_body> res{status::ok, 11};
+        BEAST_EXPECT(res.count(field::content_length) == 0);
+        BEAST_EXPECT(res.count(field::transfer_encoding) == 0);
+
+        res.content_length(0);
+        BEAST_EXPECT(res[field::content_length] == "0");
+        
+        res.content_length(100);
+        BEAST_EXPECT(res[field::content_length] == "100");
+        
+        res.content_length(boost::none);
+        BEAST_EXPECT(res.count(field::content_length) == 0);
+
+        res.set(field::transfer_encoding, "chunked");
+        res.content_length(0);
+        BEAST_EXPECT(res[field::content_length] == "0");
+        BEAST_EXPECT(res.count(field::transfer_encoding) == 0);
+        
+        res.set(field::transfer_encoding, "chunked");
+        res.content_length(100);
+        BEAST_EXPECT(res[field::content_length] == "100");
+        BEAST_EXPECT(res.count(field::transfer_encoding) == 0);
+        
+        res.set(field::transfer_encoding, "chunked");
+        res.content_length(boost::none);
+        BEAST_EXPECT(res.count(field::content_length) == 0);
+        BEAST_EXPECT(res.count(field::transfer_encoding) == 0);
+
+        auto const check = [&](std::string s)
+        {
+            res.set(field::transfer_encoding, s);
+            res.content_length(0);
+            BEAST_EXPECT(res[field::content_length] == "0");
+            BEAST_EXPECT(res[field::transfer_encoding] == s);
+        
+            res.set(field::transfer_encoding, s);
+            res.content_length(100);
+            BEAST_EXPECT(res[field::content_length] == "100");
+            BEAST_EXPECT(res[field::transfer_encoding] == s);
+        
+            res.set(field::transfer_encoding, s);
+            res.content_length(boost::none);
+            BEAST_EXPECT(res.count(field::content_length) == 0);
+            BEAST_EXPECT(res[field::transfer_encoding] == s);
+
+            res.set(field::transfer_encoding, s + ", chunked");
+            res.content_length(0);
+            BEAST_EXPECT(res[field::content_length] == "0");
+            BEAST_EXPECT(res[field::transfer_encoding] == s);
+        
+            res.set(field::transfer_encoding, s + ", chunked");
+            res.content_length(100);
+            BEAST_EXPECT(res[field::content_length] == "100");
+            BEAST_EXPECT(res[field::transfer_encoding] == s);
+        
+            res.set(field::transfer_encoding, s + ", chunked");
+            res.content_length(boost::none);
+            BEAST_EXPECT(res.count(field::content_length) == 0);
+            BEAST_EXPECT(res[field::transfer_encoding] == s);
+
+            res.set(field::transfer_encoding, "chunked, " + s);
+            res.content_length(0);
+            BEAST_EXPECT(res[field::content_length] == "0");
+            BEAST_EXPECT(res[field::transfer_encoding] == "chunked, " + s);
+        
+            res.set(field::transfer_encoding, "chunked, " + s);
+            res.content_length(100);
+            BEAST_EXPECT(res[field::content_length] == "100");
+            BEAST_EXPECT(res[field::transfer_encoding] == "chunked, " + s);
+        
+            res.set(field::transfer_encoding, "chunked, " + s);
+            res.content_length(boost::none);
+            BEAST_EXPECT(res.count(field::content_length) == 0);
+            BEAST_EXPECT(res[field::transfer_encoding] == "chunked, " + s);
+        };
+
+        check("foo");
+
+        BOOST_STATIC_ASSERT(fields::max_static_buffer == 4096);
+        std::string const big(4096 + 1, 'a');
+
+        check(big);
+    }
+
+    void
+    testChunked()
+    {
+        response<empty_body> res{status::ok, 11};
+        BEAST_EXPECT(res.count(field::content_length) == 0);
+        BEAST_EXPECT(res.count(field::transfer_encoding) == 0);
+
+        auto const chunked =
+            [&](bool v)
+            {
+                res.chunked(v);
+                BEAST_EXPECT(
+                    (res.chunked() && v) ||
+                    (! res.chunked() && ! v));
+                BEAST_EXPECT(res.count(
+                    field::content_length) == 0);
+            };
+
+        res.erase(field::transfer_encoding);
+        res.set(field::content_length, 32);
+        chunked(true);
+        BEAST_EXPECT(res[field::transfer_encoding] == "chunked");
+
+        res.set(field::transfer_encoding, "chunked");
+        chunked(true);
+        BEAST_EXPECT(res[field::transfer_encoding] == "chunked");
+
+        res.erase(field::transfer_encoding);
+        res.set(field::content_length, 32);
+        chunked(false);
+        BEAST_EXPECT(res.count(field::transfer_encoding) == 0);
+
+        res.set(field::transfer_encoding, "chunked");
+        chunked(false);
+        BEAST_EXPECT(res.count(field::transfer_encoding) == 0);
+
+
+
+        res.set(field::transfer_encoding, "foo");
+        chunked(true);
+        BEAST_EXPECT(res[field::transfer_encoding] == "foo, chunked");
+
+        res.set(field::transfer_encoding, "chunked, foo");
+        chunked(true);
+        BEAST_EXPECT(res[field::transfer_encoding] == "chunked, foo, chunked");
+
+        res.set(field::transfer_encoding, "chunked, foo, chunked");
+        chunked(true);
+        BEAST_EXPECT(res[field::transfer_encoding] == "chunked, foo, chunked");
+
+        res.set(field::transfer_encoding, "foo, chunked");
+        chunked(false);
+        BEAST_EXPECT(res[field::transfer_encoding] == "foo");
+
+        res.set(field::transfer_encoding, "chunked, foo");
+        chunked(false);
+        BEAST_EXPECT(res[field::transfer_encoding] == "chunked, foo");
+
+        res.set(field::transfer_encoding, "chunked, foo, chunked");
+        chunked(false);
+        BEAST_EXPECT(res[field::transfer_encoding] == "chunked, foo");
+    }
+
+    void
     run() override
     {
         testMembers();
@@ -760,6 +910,8 @@ public:
         testPreparePayload();
 
         testKeepAlive();
+        testContentLength();
+        testChunked();
     }
 };
 

@@ -211,6 +211,11 @@ protected:
     string_view
     get_reason_impl() const;
 
+    /** Returns the chunked Transfer-Encoding setting
+    */
+    bool
+    get_chunked_impl() const;
+
     /** Returns the keep-alive setting
     */
     bool
@@ -237,19 +242,20 @@ protected:
     void
     set_reason_impl(string_view s);
 
+    /** Sets or clears the chunked Transfer-Encoding value
+    */
+    void
+    set_chunked_impl(bool value);
+
+    /** Sets or clears the Content-Length field
+    */
+    void
+    set_content_length_impl(boost::optional<std::uint64_t>);
+
     /** Adjusts the Connection field
     */
     void
-    set_keep_alive_impl(unsigned verison, bool keep_alive);
-
-    /** Updates the payload metadata.
-
-        @param b `true` if chunked
-
-        @param n The content length if known, otherwise `boost::none`
-    */
-    void
-    prepare_payload_impl(bool b, boost::optional<std::uint64_t> n);
+    set_keep_alive_impl(unsigned version, bool keep_alive);
 };
 
 static_assert(is_fields<Fields>::value,

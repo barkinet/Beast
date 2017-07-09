@@ -133,13 +133,9 @@ public:
         }
     };
 
-    bool
-    get_chunked() const;
-
     basic_fields const& f_;
     boost::asio::const_buffer cb_[3];
     char buf_[13];
-    bool chunked_;
 
 public:
     using const_buffers_type =
@@ -156,12 +152,6 @@ public:
     reader(basic_fields const& f,
         unsigned version, unsigned code);
 
-    bool
-    chunked()
-    {
-        return chunked_;
-    }
-
     const_buffers_type
     get() const
     {
@@ -175,28 +165,10 @@ public:
 };
 
 template<class Allocator>
-bool
-basic_fields<Allocator>::reader::
-get_chunked() const
-{
-    auto const te = token_list{
-        f_[field::transfer_encoding]};
-    for(auto it = te.begin(); it != te.end();)
-    {
-        auto const next = std::next(it);
-        if(next == te.end())
-            return iequals(*it, "chunked");
-        it = next;
-    }
-    return false;
-}
-
-template<class Allocator>
 basic_fields<Allocator>::reader::
 reader(basic_fields const& f,
         unsigned version, verb v)
     : f_(f)
-    , chunked_(get_chunked())
 {
 /*
     request
@@ -235,7 +207,6 @@ basic_fields<Allocator>::reader::
 reader(basic_fields const& f,
         unsigned version, unsigned code)
     : f_(f)
-    , chunked_(get_chunked())
 {
 /*
     response
@@ -733,42 +704,6 @@ equal_range(string_view name) const ->
 
 namespace detail {
 
-// Builds a new string with "chunked" taken off the end if present
-template<class String>
-void
-without_chunked_last(String& s, string_view const& tokens)
-{
-    token_list te{tokens};
-    if(te.begin() != te.end())
-    {
-        auto it = te.begin();
-        auto next = std::next(it);
-        if(next == te.end())
-        {
-            if(! iequals(*it, "chunked"))
-                s.append(it->data(), it->size());
-            return;
-        }
-        s.append(it->data(), it->size());
-        for(;;)
-        {
-            it = next;
-            next = std::next(it);
-            if(next == te.end())
-            {
-                if(! iequals(*it, "chunked"))
-                {
-                    s.append(", ");
-                    s.append(it->data(), it->size());
-                }
-                return;
-            }
-            s.append(", ");
-            s.append(it->data(), it->size());
-        }
-    }
-}
-
 // Filter a token list
 //
 template<class String, class Pred>
@@ -791,6 +726,45 @@ filter_token_list(
     {
         if(! pred(*it))
         {
+            s.append(", ");
+            s.append(it->data(), it->size());
+        }
+    }
+}
+
+// Filter the last item in a token list
+template<class String, class Pred>
+void
+filter_token_list_last(
+    String& s,
+    string_view const& value,
+    Pred&& pred)
+{
+    token_list te{value};
+    if(te.begin() != te.end())
+    {
+        auto it = te.begin();
+        auto next = std::next(it);
+        if(next == te.end())
+        {
+            if(! pred(*it))
+                s.append(it->data(), it->size());
+            return;
+        }
+        s.append(it->data(), it->size());
+        for(;;)
+        {
+            it = next;
+            next = std::next(it);
+            if(next == te.end())
+            {
+                if(! pred(*it))
+                {
+                    s.append(", ");
+                    s.append(it->data(), it->size());
+                }
+                return;
+            }
             s.append(", ");
             s.append(it->data(), it->size());
         }
@@ -901,6 +875,23 @@ get_reason_impl() const
 template<class Allocator>
 bool
 basic_fields<Allocator>::
+get_chunked_impl() const
+{
+    auto const te = token_list{
+        (*this)[field::transfer_encoding]};
+    for(auto it = te.begin(); it != te.end();)
+    {
+        auto const next = std::next(it);
+        if(next == te.end())
+            return iequals(*it, "chunked");
+        it = next;
+    }
+    return false;
+}
+
+template<class Allocator>
+bool
+basic_fields<Allocator>::
 get_keep_alive_impl(unsigned version) const
 {
     auto const it = find(field::connection);
@@ -949,60 +940,35 @@ set_reason_impl(string_view s)
 template<class Allocator>
 void
 basic_fields<Allocator>::
-set_keep_alive_impl(
-    unsigned version, bool keep_alive)
+set_chunked_impl(bool value)
 {
-    // VFALCO What about Proxy-Connection ?
-    auto const value = (*this)[field::connection];
-    try
+    auto it = find(field::transfer_encoding);
+    if(value)
     {
-        static_string<max_static_buffer> temp;
-        detail::keep_alive_impl(
-            temp, value, version, keep_alive);
-        if(temp.empty())
-            erase(field::connection);
-        else
-            set(field::connection, temp);
-    }
-    catch(std::length_error const&)
-    {
-        std::basic_string<
-            char,
-            std::char_traits<char>,
-            Allocator> temp{alloc_};
-        temp.reserve(value.size());
-        detail::keep_alive_impl(
-            temp, value, version, keep_alive);
-        if(temp.empty())
-            erase(field::connection);
-        else
-            set(field::connection, temp);
-    }
-}
-
-template<class Allocator>
-void
-basic_fields<Allocator>::
-prepare_payload_impl(bool chunked,
-    boost::optional<std::uint64_t> size)
-{
-    if(chunked)
-    {
-        BOOST_ASSERT(! size);
-        erase(field::content_length);
-        auto it = find(field::transfer_encoding);
+        // append "chunked"
         if(it == end())
         {
             set(field::transfer_encoding, "chunked");
             return;
         }
-
-        static_string<max_static_buffer> temp;
-        if(it->value().size() <= temp.size() + 9)
+        auto const te = token_list{it->value()};
+        for(auto itt = te.begin();;)
         {
-            temp.append(it->value().data(), it->value().size());
-            temp.append(", chunked", 9);
-            set(field::transfer_encoding, temp);
+            auto const next = std::next(itt);
+            if(next == te.end())
+            {
+                if(iequals(*itt, "chunked"))
+                    return; // already set
+                break;
+            }
+            itt = next;
+        }
+        static_string<max_static_buffer> buf;
+        if(it->value().size() <= buf.size() + 9)
+        {
+            buf.append(it->value().data(), it->value().size());
+            buf.append(", chunked", 9);
+            set(field::transfer_encoding, buf);
         }
         else
         {
@@ -1017,39 +983,85 @@ prepare_payload_impl(bool chunked,
         }
         return;
     }
-
-    auto it = find(field::transfer_encoding);
-    if(it != end())
+    // filter "chunked"
+    if(it == end())
+        return;
+    try
     {
-        // We have to just try it because we can't
-        // know ahead of time if there's enough room.
-        try
-        {
-            static_string<max_static_buffer> temp;
-            detail::without_chunked_last(temp, it->value());
-            if(! temp.empty())
-                set(field::transfer_encoding, temp);
-            else
-                erase(field::transfer_encoding);
-        }
-        catch(std::length_error const&)
-        {
-            std::basic_string<
-                char,
-                std::char_traits<char>,
-                Allocator> s{alloc_};
-            s.reserve(it->value().size());
-            detail::without_chunked_last(s, it->value());
-            if(! s.empty())
-                set(field::transfer_encoding, s);
-            else
-                erase(field::transfer_encoding);
-        }
+        static_string<max_static_buffer> buf;
+        detail::filter_token_list_last(buf, it->value(),
+            [](string_view const& s)
+            {
+                return iequals(s, "chunked");
+            });
+        if(! buf.empty())
+            set(field::transfer_encoding, buf);
+        else
+            erase(field::transfer_encoding);
     }
-    if(size)
-        set(field::content_length, *size);
-    else
+    catch(std::length_error const&)
+    {
+        std::basic_string<
+            char,
+            std::char_traits<char>,
+            Allocator> s{alloc_};
+        s.reserve(it->value().size());
+        detail::filter_token_list_last(s, it->value(),
+            [](string_view const& s)
+            {
+                return iequals(s, "chunked");
+            });
+        if(! s.empty())
+            set(field::transfer_encoding, s);
+        else
+            erase(field::transfer_encoding);
+    }
+}
+
+template<class Allocator>
+void
+basic_fields<Allocator>::
+set_content_length_impl(
+    boost::optional<std::uint64_t> const& value)
+{
+    if(! value)
         erase(field::content_length);
+    else
+        set(field::content_length, *value);
+}
+
+template<class Allocator>
+void
+basic_fields<Allocator>::
+set_keep_alive_impl(
+    unsigned version, bool keep_alive)
+{
+    // VFALCO What about Proxy-Connection ?
+    auto const value = (*this)[field::connection];
+    try
+    {
+        static_string<max_static_buffer> buf;
+        detail::keep_alive_impl(
+            buf, value, version, keep_alive);
+        if(buf.empty())
+            erase(field::connection);
+        else
+            set(field::connection, buf);
+    }
+    catch(std::length_error const&)
+    {
+        std::basic_string<
+            char,
+            std::char_traits<char>,
+            Allocator> s{alloc_};
+        s.reserve(value.size());
+        detail::keep_alive_impl(
+            s, value, version, keep_alive);
+        if(s.empty())
+            erase(field::connection);
+        else
+            set(field::connection, s);
+    }
 }
 
 //------------------------------------------------------------------------------
